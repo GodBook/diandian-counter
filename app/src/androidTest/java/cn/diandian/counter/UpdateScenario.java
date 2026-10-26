@@ -74,6 +74,10 @@ final class UpdateScenario {
         check(rejected, "provider cannot expose databases or arbitrary paths");
 
         UpdateManager manager = ((CounterApp) context.getApplicationContext()).updates();
+        // Immediately after a real installed update, the manager first clears the obsolete download cache.
+        long initializationDeadline = android.os.SystemClock.uptimeMillis() + 10_000;
+        while (manager.state().phase == UpdateManager.Phase.CHECKING && android.os.SystemClock.uptimeMillis() < initializationDeadline)
+            android.os.SystemClock.sleep(50);
         CountDownLatch checked = new CountDownLatch(1); AtomicReference<UpdateManager.State> result = new AtomicReference<>();
         UpdateManager.Listener listener = state -> {
             if (state.phase == UpdateManager.Phase.CURRENT || state.phase == UpdateManager.Phase.ERROR) { result.set(state); checked.countDown(); }
