@@ -123,7 +123,7 @@ final class UpdateManager {
     private void failure(IOException failure, UpdateManifest release, boolean manual) {
         String error = failure.getMessage();
         if (failure instanceof java.net.UnknownHostException || failure instanceof java.net.SocketTimeoutException
-                || failure instanceof javax.net.ssl.SSLException || error == null)
+                || failure instanceof java.net.SocketException || failure instanceof javax.net.ssl.SSLException || error == null)
             error = "无法连接 GitHub，请检查网络后重试";
         store.record("UPDATE_ERROR", error);
         publish(new State(Phase.ERROR, release, error, manual, 0));

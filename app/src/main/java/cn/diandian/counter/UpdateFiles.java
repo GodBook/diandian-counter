@@ -63,7 +63,9 @@ final class UpdateFiles {
             throw new IOException("安装包完整性校验失败，请重新下载");
         try {
             PackageManager packages = context.getPackageManager();
-            int flags = Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES;
+            // Android 9/10 archive parsing collects certificates only when the legacy flag is also set.
+            int flags = PackageManager.GET_SIGNATURES;
+            if (Build.VERSION.SDK_INT >= 28) flags |= PackageManager.GET_SIGNING_CERTIFICATES;
             PackageInfo archive = packages.getPackageArchiveInfo(apk.getAbsolutePath(), flags);
             PackageInfo installed = packages.getPackageInfo(context.getPackageName(), flags);
             if (archive == null || !context.getPackageName().equals(archive.packageName) || versionCode(archive) != release.versionCode)
@@ -77,8 +79,8 @@ final class UpdateFiles {
 
     @SuppressWarnings("deprecation")
     private static Set<String> signers(PackageInfo info) throws IOException {
-        Signature[] signatures = Build.VERSION.SDK_INT >= 28
-                ? info.signingInfo == null ? null : info.signingInfo.getApkContentsSigners() : info.signatures;
+        Signature[] signatures = Build.VERSION.SDK_INT >= 28 && info.signingInfo != null
+                ? info.signingInfo.getApkContentsSigners() : info.signatures;
         Set<String> result = new HashSet<>();
         if (signatures != null) for (Signature signature : signatures) result.add(hex(digest().digest(signature.toByteArray())));
         return result;

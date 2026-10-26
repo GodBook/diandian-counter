@@ -11,8 +11,8 @@ android {
         applicationId 'cn.diandian.counter'
         minSdk 26
         targetSdk 36
-        versionCode providers.gradleProperty('counterVersionCode').orElse('2').get().toInteger()
-        versionName providers.gradleProperty('counterVersionName').orElse('1.1.0').get()
+        versionCode providers.gradleProperty('counterVersionCode').orElse('3').get().toInteger()
+        versionName providers.gradleProperty('counterVersionName').orElse('1.1.1').get()
         testApplicationId 'cn.diandian.counter.tests'
         testInstrumentationRunner 'cn.diandian.counter.CounterTestRunner'
     }

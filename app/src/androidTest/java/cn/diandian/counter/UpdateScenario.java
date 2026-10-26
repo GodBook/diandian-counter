@@ -22,8 +22,8 @@ final class UpdateScenario {
         Context context = instrumentation.getTargetContext();
         String json = UpdateHttp.text(UpdateManifest.LATEST, 65_536);
         UpdateManifest release = UpdateManifest.parse(json);
-        check(release.versionCode == 2 && release.versionName.equals("1.1.0"), "live GitHub latest points to release 1.1.0");
-        check(release.newerThan(1) && !release.newerThan(2), "old version detects update and current version does not");
+        check(release.versionCode == BuildConfig.VERSION_CODE && release.versionName.equals(BuildConfig.VERSION_NAME), "live GitHub latest matches the tested release");
+        check(release.newerThan(1) && !release.newerThan(BuildConfig.VERSION_CODE), "old version detects update and current version does not");
         check(UpdateManifest.parse(release.json()).sha256.equals(release.sha256), "cached update manifest roundtrip");
         boolean rejected = false;
         try { UpdateManifest.parse(json.replace("cn.diandian.counter", "cn.other.counter")); } catch (IOException invalid) { rejected = true; }
@@ -31,6 +31,13 @@ final class UpdateScenario {
         rejected = false;
         try { UpdateHttp.text(UpdateManifest.LATEST, 1); } catch (IOException invalid) { rejected = true; }
         check(rejected, "network response size is bounded");
+        android.content.pm.PackageManager packages = context.getPackageManager();
+        android.content.pm.PackageInfo installed = packages.getPackageInfo(context.getPackageName(), android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES);
+        android.content.pm.PackageInfo archive = packages.getPackageArchiveInfo(installed.applicationInfo.sourceDir, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES | android.content.pm.PackageManager.GET_SIGNATURES);
+        check(installed.signingInfo != null && archive != null && archive.signingInfo != null, "platform returns installed and archive signing certificates");
+        String installedHash = UpdateFiles.hex(java.security.MessageDigest.getInstance("SHA-256").digest(installed.signingInfo.getApkContentsSigners()[0].toByteArray()));
+        String archiveHash = UpdateFiles.hex(java.security.MessageDigest.getInstance("SHA-256").digest(archive.signingInfo.getApkContentsSigners()[0].toByteArray()));
+        check(installedHash.equals(archiveHash), "installed APK parses with same certificate: " + installedHash + " vs " + archiveHash);
         AtomicInteger progress = new AtomicInteger(-1);
         File apk = UpdateFiles.download(context, release, new AtomicBoolean(), percent -> {
             if (percent < progress.get() || percent < 0 || percent > 100) throw new AssertionError("invalid download progress");

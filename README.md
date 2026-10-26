@@ -4,7 +4,7 @@
 
 [下载最新 APK](https://github.com/GodBook/diandian-counter/releases/latest) · [版本记录](https://github.com/GodBook/diandian-counter/releases) · [公开仓库](https://github.com/GodBook/diandian-counter)
 
-本地发布包：`artifacts/diandian-counter-v1.1.0.apk`。APK 通过 GitHub Releases 分发，不纳入 Git 源码历史。
+本地发布包：`artifacts/diandian-counter-v1.1.1.apk`。APK 通过 GitHub Releases 分发，不纳入 Git 源码历史。
 
 <img src="artifacts/preview.png" width="320" alt="点点计数：多个独立计数器，大数字与整张卡片点击加一">
 
@@ -23,7 +23,7 @@
 3. 下载完成后，应用校验文件大小、SHA-256、包名、版本号和签名，再交给 Android 系统安装器。
 4. 首次安装更新需要允许“点点计数”安装应用；从设置页返回后继续安装。覆盖安装会保留原有计数和日志。
 
-**1.0.0 没有在线更新功能。已安装 1.0.0 的用户需要先从 Releases 手动下载 1.1.0 并覆盖安装一次，之后可在应用内更新。不要先卸载旧版。**
+**1.0.0 没有在线更新功能。已安装 1.0.0 的用户需要先从 Releases 手动下载 1.1.1 并覆盖安装一次，之后可在应用内更新。不要先卸载旧版。Android 9/10 上的 1.1.0 也应手动覆盖到 1.1.1，以修复安装包签名读取问题。**
 
 版本信息从 `https://github.com/GodBook/diandian-counter/releases/latest/download/update.json` 获取，正式版 APK 使用固定的版本下载地址。仅接受 HTTPS 和 GitHub 官方附件域名，自动检查失败时保持安静，手动检查会显示错误。网络无法访问 GitHub 时，计数和本地日志照常使用。
 
@@ -67,7 +67,7 @@ Android 可能延后后台闹钟，尤其是未授权精确闹钟、系统省电
 在 `app/build.gradle` 中递增默认 `versionCode` 并修改 `versionName`，在 `docs/releases/` 新增对应版本说明，提交源码后使用同一把发布密钥运行：
 
 ```powershell
-.\tools\publish-release.ps1 -JavaDirectory 'D:\dev\jdk-17' -SdkDirectory 'D:\dev\android-sdk' -OutputDirectory 'D:\dev\diandian-counter-build' -NotesPath 'docs\releases\v1.1.0.md'
+.\tools\publish-release.ps1 -JavaDirectory 'D:\dev\jdk-17' -SdkDirectory 'D:\dev\android-sdk' -OutputDirectory 'D:\dev\diandian-counter-build' -NotesPath 'docs\releases\v1.1.1.md'
 ```
 
 脚本运行测试、Lint 和发布构建，从 APK 读取真实版本、最低系统版本及大小，生成 `update.json` 和 `SHA256SUMS.txt`，推送源码与对应 Git 标签，上传三个附件到草稿，最后将完整草稿设为最新正式版。禁止覆盖既有版本或移动旧标签。执行环境需要 GitHub CLI 登录，并能通过 Git 和 HTTPS 访问 GitHub；命令不内置网络代理。
@@ -89,6 +89,6 @@ adb -s emulator-5582 shell am instrument -w cn.diandian.counter.tests/cn.diandia
 
 设备测试输出 `PASS` 才表示通过。参数 `-e mode ui` 运行实际界面流程，要求专用模拟器上的应用数据为空。后台闹钟使用 `-e mode alarm` 安排 15 秒后的归零并退出进程，再在到期后使用 `-e mode verify-alarm` 验证结果；验证模式不会主动补记，从而确认操作确实由后台接收器执行。Android 12 及以上测试精确闹钟时，先在系统设置中授予“闹钟和提醒”权限；不授权时系统可能延后执行。
 
-在线更新设备测试使用 `-PcounterTestBuildType=release` 构建 `:app:assembleReleaseAndroidTest`，在专用模拟器安装同签名的正式版和测试包，执行 `am instrument -w -e mode updates ...`。这会访问真实 GitHub 最新版本、下载附件、校验签名和文件、测试只读安装 URI、错误元数据及检查更新状态。该套测试针对当前的 1.1.0 发布，后续版本发布时需同步升级断言。开发测试可通过 Gradle 属性 `counterVersionCode`、`counterVersionName` 构建较低版本以验证完整覆盖升级，测试包不作为正式版发布。
+在线更新设备测试使用 `-PcounterTestBuildType=release` 构建 `:app:assembleReleaseAndroidTest`，在专用模拟器安装同签名的正式版和测试包，执行 `am instrument -w -e mode updates ...`。这会访问真实 GitHub 最新版本、下载附件、校验签名和文件、测试只读安装 URI、错误元数据及检查更新状态。该套测试针对当前正式版发布。开发测试可通过 Gradle 属性 `counterVersionCode`、`counterVersionName` 构建较低版本以验证完整覆盖升级，测试包不作为正式版发布。
 
 业务代码在 `app/src/main/java/cn/diandian/counter`：`MainActivity` 为原生界面，`CounterStore` 管理 SQLite 事务和日志，`ResetRule` 计算周期，`ResetScheduler` 与 `ResetReceiver` 安排后台归零、开机恢复和时间变更后的重新调度。`UpdateManager` 管理更新任务与状态，`UpdateHttp` 处理受限 HTTPS 请求，`UpdateFiles` 下载并校验 APK，`UpdateFileProvider` 向系统安装器临时提供只读文件。
