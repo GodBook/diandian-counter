@@ -1,0 +1,10 @@
+plugins {
+    id 'com.android.application' version '8.10.1' apply false
+}
+
+// Optional ASCII output path for Windows Java worker argument-file encoding issues.
+def outputRoot = providers.gradleProperty('counterBuildDir').orNull
+if (outputRoot != null) {
+    layout.buildDirectory = file(outputRoot + '/root')
+    subprojects { layout.buildDirectory = file(outputRoot + '/' + project.name) }
+}

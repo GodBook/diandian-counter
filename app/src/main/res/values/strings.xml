@@ -1,0 +1,4 @@
+<resources>
+    <string name="counter_summary">%1$d 个计数器 · 当前合计</string>
+    <string name="history_summary">共 %1$d 条记录 · 最新在前 · 已显示 %2$d 条</string>
+</resources>

@@ -1,0 +1,4 @@
+storeFile=.signing/diandian-release.jks
+storePassword=YOUR_LOCAL_KEYSTORE_PASSWORD
+keyAlias=diandian
+keyPassword=YOUR_LOCAL_KEY_PASSWORD
