@@ -10,4 +10,6 @@ signing.properties
 artifacts/verification/
 artifacts/*.apk
 artifacts/*.idsig
+artifacts/update.json
+artifacts/SHA256SUMS.txt
 tools/.runtime/

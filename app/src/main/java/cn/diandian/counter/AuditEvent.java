@@ -26,6 +26,14 @@ public final class AuditEvent {
             case "TIME_CHANGE" -> "调整时区或系统时间";
             case "BOOT" -> "设备重启后恢复周期";
             case "UI" -> "界面操作";
+            case "UPDATE_CHECK" -> "检查在线更新";
+            case "UPDATE_CHECK_RESULT" -> "版本检查结果";
+            case "UPDATE_DOWNLOAD" -> "下载更新";
+            case "UPDATE_READY" -> "更新校验通过";
+            case "UPDATE_INSTALL" -> "请求安装更新";
+            case "UPDATE_ERROR" -> "在线更新失败";
+            case "UPDATE_CANCEL" -> "取消更新下载";
+            case "UPDATE_LATER" -> "推迟更新";
             default -> action;
         };
     }

@@ -4,6 +4,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $counterProject = Split-Path -Parent $PSScriptRoot
+if (-not (Test-Path -LiteralPath (Join-Path $counterProject 'signing.properties'))) {
+    throw '发布构建需要本地 signing.properties。请参考 signing.properties.example 配置同一把发布密钥。'
+}
 if ($JavaDirectory) { $env:JAVA_HOME = $JavaDirectory }
 if (-not $OutputDirectory) {
     # Java workers on some Windows installations cannot read non-ASCII classpaths.
@@ -20,7 +23,9 @@ try {
     }
     $counterArtifacts = Join-Path $counterProject 'artifacts'
     New-Item -ItemType Directory -Path $counterArtifacts -Force | Out-Null
-    $counterDestination = Join-Path $counterArtifacts 'diandian-counter-v1.0.0.apk'
+    $counterMetadata = Get-Content -LiteralPath (Join-Path $OutputDirectory 'app\outputs\apk\release\output-metadata.json') -Raw | ConvertFrom-Json
+    $counterVersion = $counterMetadata.elements[0].versionName
+    $counterDestination = Join-Path $counterArtifacts "diandian-counter-v$counterVersion.apk"
     Copy-Item -LiteralPath $counterSource -Destination $counterDestination -Force
     Get-Item -LiteralPath $counterDestination | Select-Object FullName, Length
     Get-FileHash -LiteralPath $counterDestination -Algorithm SHA256

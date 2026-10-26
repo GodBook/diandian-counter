@@ -27,6 +27,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.Switch;
@@ -63,6 +64,13 @@ public final class MainActivity extends Activity {
     private int historyShown;
     private long shownRevision;
     private boolean active, exporting;
+    private UpdateManager updates;
+    private TextView updateStatus, downloadStatus;
+    private ProgressBar downloadProgress;
+    private AlertDialog progressDialog;
+    private UpdateManager.State lastUpdateNotice;
+    private long promptedVersion, promptedReady;
+    private final UpdateManager.Listener updateListener = this::updateChanged;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService files = Executors.newSingleThreadExecutor();
     private final Runnable ticker = new Runnable() {
@@ -85,8 +93,9 @@ public final class MainActivity extends Activity {
         else getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         store = ((CounterApp) getApplication()).store();
+        updates = ((CounterApp) getApplication()).updates();
         if (saved != null) { page = saved.getInt("page"); historyCounter = saved.getLong("counter", -1); historyCategory = saved.getInt("category"); }
-        store.record("APP_OPEN", "打开点点计数 1.0.0");
+        store.record("APP_OPEN", "打开点点计数 " + BuildConfig.VERSION_NAME);
         render();
     }
 
@@ -94,12 +103,17 @@ public final class MainActivity extends Activity {
         super.onResume(); active = true;
         store.reconcile(System.currentTimeMillis()); ResetScheduler.schedule(this); refresh();
         handler.removeCallbacks(ticker); handler.postDelayed(ticker, 1000);
+        updates.attach(updateListener); updates.autoCheck();
     }
-    @Override protected void onPause() { active = false; handler.removeCallbacks(ticker); super.onPause(); }
+    @Override protected void onPause() { active = false; updates.detach(updateListener); handler.removeCallbacks(ticker); super.onPause(); }
     @Override protected void onStop() {
         store.record("APP_BACKGROUND", "数据已保存在本机"); super.onStop();
     }
-    @Override protected void onDestroy() { handler.removeCallbacks(ticker); files.shutdown(); super.onDestroy(); }
+    @Override protected void onDestroy() {
+        handler.removeCallbacks(ticker); files.shutdown();
+        if (progressDialog != null) progressDialog.dismiss();
+        super.onDestroy();
+    }
     @Override protected void onSaveInstanceState(Bundle out) {
         out.putInt("page", page); out.putLong("counter", historyCounter); out.putInt("category", historyCategory); super.onSaveInstanceState(out);
     }
@@ -434,6 +448,13 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == 43) {
+            if (!getPackageManager().canRequestPackageInstalls()) {
+                updates.pendingInstall(false); store.record("UPDATE_CANCEL", "尚未允许此应用安装更新");
+                message("尚未允许安装，可在检查更新中重试");
+            }
+            return;
+        }
         if (request != 42) return;
         if (result != RESULT_OK || data == null || data.getData() == null) { store.record("UI", "取消操作记录导出"); return; }
         Uri uri = data.getData(); exporting = true; message("正在导出全部记录…");
@@ -454,7 +475,24 @@ public final class MainActivity extends Activity {
         store.record("VIEW_SETTINGS", "查看设置与使用说明");
         ScrollView scroll = new ScrollView(this); LinearLayout body = column(this);
         body.setPadding(dp(this, 24), dp(this, 8), dp(this, 24), dp(this, 20)); scroll.addView(body);
-        body.addView(text(this, "每一次，都算数。", 22, INK, true)); body.addView(space(this, 8)); body.addView(text(this, "点点计数  1.0.0", 13, MUTED, false)); body.addView(space(this, 24));
+        body.addView(text(this, "每一次，都算数。", 22, INK, true)); body.addView(space(this, 8)); body.addView(text(this, "点点计数  " + BuildConfig.VERSION_NAME, 13, MUTED, false)); body.addView(space(this, 24));
+        body.addView(text(this, "在线更新", 15, INK, true)); body.addView(space(this, 8));
+        updateStatus = text(this, updates.state().message, 13, MUTED, false); updateStatus.setLineSpacing(dp(this, 4), 1); body.addView(updateStatus);
+        body.addView(space(this, 12));
+        body.addView(button(this, "检查更新", false, () -> {
+            UpdateManager.State state = updates.state();
+            if (state.phase == UpdateManager.Phase.READY) requestInstall(state.release);
+            else if (state.phase == UpdateManager.Phase.DOWNLOADING) showDownload();
+            else updates.check(true);
+        }), match(this, -2));
+        Switch automatic = new Switch(this); automatic.setText("启动时检查更新"); automatic.setTextSize(15); automatic.setTextColor(INK); automatic.setMinHeight(dp(this, 48));
+        automatic.setChecked(updates.automatic()); automatic.setOnCheckedChangeListener((view, checked) -> updates.automatic(checked));
+        body.addView(automatic); body.addView(space(this, 8));
+        body.addView(button(this, "GitHub 项目与版本", false, () -> {
+            store.record("UI", "打开 GitHub 项目与版本页面");
+            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(UpdateManifest.REPOSITORY + "/releases"))); }
+            catch (ActivityNotFoundException unavailable) { message("请安装或启用浏览器"); }
+        }), match(this, -2)); body.addView(space(this, 24));
         Switch haptic = new Switch(this); haptic.setText("轻触震动"); haptic.setTextSize(15); haptic.setTextColor(INK); haptic.setMinHeight(dp(this, 48));
         haptic.setChecked(getPreferences(MODE_PRIVATE).getBoolean("haptic", true));
         haptic.setOnCheckedChangeListener((button, checked) -> { getPreferences(MODE_PRIVATE).edit().putBoolean("haptic", checked).apply(); store.record("SETTING", "轻触震动：" + (checked ? "开启" : "关闭")); });
@@ -469,8 +507,80 @@ public final class MainActivity extends Activity {
             catch (ActivityNotFoundException unavailable) { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
         }), match(this, -2));
         body.addView(space(this, 22)); body.addView(text(this, "关于记录", 15, INK, true)); body.addView(space(this, 8));
-        TextView description = text(this, "新建、点击、改名、改色、修改周期、手动或自动重置、删除，以及页面访问、筛选和设置操作都会记录。\n\n所有数据仅存于本机，无需账号和网络权限。日志不会自动清理，删除计数器仍会保留历史。可在操作记录页面导出全部 CSV。\n\n卸载应用或清除应用数据会移除本机记录，建议定期导出。手机关机、系统强行停止或限制后台运行时，重置可能延后，恢复运行后会逐次补记。", 13, MUTED, false);
+        TextView description = text(this, "新建、点击、改名、改色、修改周期、手动或自动重置、删除，以及页面访问、筛选、设置和在线更新操作都会记录。\n\n计数与日志仅存于本机，无需账号；联网仅用于检查版本和下载更新，不上传计数和日志。启动检查每天最多一次，可在此关闭。日志不会自动清理，删除计数器仍会保留历史。可在操作记录页面导出全部 CSV。\n\n卸载应用或清除应用数据会移除本机记录，建议定期导出。手机关机、系统强行停止或限制后台运行时，重置可能延后，恢复运行后会逐次补记。", 13, MUTED, false);
         description.setLineSpacing(dp(this, 5), 1); body.addView(description);
-        new AlertDialog.Builder(this).setTitle("设置与说明").setView(scroll).setPositiveButton("知道了", null).show();
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("设置与说明").setView(scroll).setPositiveButton("知道了", null).create();
+        TextView status = updateStatus;
+        dialog.setOnDismissListener(d -> { if (updateStatus == status) updateStatus = null; }); dialog.show();
+    }
+
+    private void updateChanged(UpdateManager.State state) {
+        if (updateStatus != null) updateStatus.setText(state.message);
+        if (!active || isFinishing() || isDestroyed()) return;
+        if (state.phase == UpdateManager.Phase.DOWNLOADING) {
+            showDownload(); downloadProgress.setProgress(state.progress); downloadStatus.setText(state.message); return;
+        }
+        if (progressDialog != null) { progressDialog.dismiss(); progressDialog = null; }
+        if (state.phase == UpdateManager.Phase.READY && state.release != null) {
+            if (updates.pendingInstall() && getPackageManager().canRequestPackageInstalls()) {
+                promptedReady = state.release.versionCode;
+                updates.pendingInstall(false); launchInstaller(state.release); return;
+            }
+            if (promptedReady != state.release.versionCode && (state.manual || !updates.ignored(state.release.versionCode))) {
+                promptedReady = state.release.versionCode;
+                new AlertDialog.Builder(this).setTitle("更新已下载")
+                        .setMessage("版本 " + state.release.versionName + " 已下载并通过校验，安装后保留计数和日志。")
+                        .setNegativeButton("稍后", (d, w) -> updates.later(state.release.versionCode))
+                        .setPositiveButton("安装", (d, w) -> requestInstall(state.release)).show();
+            }
+        } else if (state.phase == UpdateManager.Phase.AVAILABLE && state.release != null
+                && (state.manual || (!updates.ignored(state.release.versionCode) && promptedVersion != state.release.versionCode))) {
+            promptedVersion = state.release.versionCode;
+            UpdateManifest release = state.release;
+            String size = String.format(Locale.CHINA, "%.1f MB", release.size / 1_048_576.0);
+            new AlertDialog.Builder(this).setTitle("发现新版本 " + release.versionName)
+                    .setMessage((release.notes.isEmpty() ? "有新版本可用。" : release.notes) + "\n\n下载大小：" + size + "\n安装后保留计数和日志。")
+                    .setNegativeButton("稍后", (d, w) -> updates.later(release.versionCode))
+                    .setPositiveButton("下载更新", (d, w) -> updates.download(release)).show();
+        } else if ((state.phase == UpdateManager.Phase.CURRENT || state.phase == UpdateManager.Phase.ERROR)
+                && state.manual && lastUpdateNotice != state) {
+            lastUpdateNotice = state; message(state.message);
+        }
+    }
+
+    private void showDownload() {
+        if (progressDialog != null && progressDialog.isShowing()) return;
+        LinearLayout body = column(this); body.setPadding(dp(this, 24), dp(this, 16), dp(this, 24), dp(this, 12));
+        downloadStatus = text(this, "正在下载更新…", 14, MUTED, false); body.addView(downloadStatus); body.addView(space(this, 18));
+        downloadProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); downloadProgress.setMax(100); body.addView(downloadProgress, match(this, 8));
+        progressDialog = new AlertDialog.Builder(this).setTitle("下载新版本").setView(body)
+                .setNegativeButton("取消下载", (d, w) -> updates.cancelDownload()).create();
+        progressDialog.setCanceledOnTouchOutside(false); progressDialog.setOnCancelListener(d -> updates.cancelDownload()); progressDialog.show();
+    }
+
+    private void requestInstall(UpdateManifest release) {
+        if (!getPackageManager().canRequestPackageInstalls()) {
+            new AlertDialog.Builder(this).setTitle("允许安装更新")
+                    .setMessage("请在下一页允许“点点计数”安装应用，返回后继续安装。")
+                    .setNegativeButton("稍后", (d, w) -> updates.pendingInstall(false))
+                    .setPositiveButton("前往设置", (d, w) -> {
+                        updates.pendingInstall(true);
+                        try { startActivityForResult(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())), 43); }
+                        catch (ActivityNotFoundException unavailable) { updates.pendingInstall(false); message("请在系统设置中允许此应用安装更新"); }
+                    }).show();
+            return;
+        }
+        launchInstaller(release);
+    }
+
+    private void launchInstaller(UpdateManifest release) {
+        updates.verifyForInstall(release, () -> {
+            if (!active || isDestroyed() || isFinishing()) return;
+            Intent install = new Intent(Intent.ACTION_VIEW).setDataAndType(UpdateFileProvider.uri(this), "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            install.setClipData(android.content.ClipData.newRawUri("update", UpdateFileProvider.uri(this)));
+            try { store.record("UPDATE_INSTALL", "请求安装版本 " + release.versionName); startActivity(install); }
+            catch (ActivityNotFoundException unavailable) { message("无法打开系统安装器，请从 GitHub 版本页面下载安装"); }
+        });
     }
 }

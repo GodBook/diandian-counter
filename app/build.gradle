@@ -11,8 +11,8 @@ android {
         applicationId 'cn.diandian.counter'
         minSdk 26
         targetSdk 36
-        versionCode 1
-        versionName '1.0.0'
+        versionCode providers.gradleProperty('counterVersionCode').orElse('2').get().toInteger()
+        versionName providers.gradleProperty('counterVersionName').orElse('1.1.0').get()
         testApplicationId 'cn.diandian.counter.tests'
         testInstrumentationRunner 'cn.diandian.counter.CounterTestRunner'
     }
@@ -32,11 +32,13 @@ android {
             minifyEnabled false
         }
     }
+    buildFeatures { buildConfig true }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
     testOptions { unitTests.returnDefaultValues = true }
+    testBuildType providers.gradleProperty('counterTestBuildType').orElse('debug').get()
     lint { abortOnError true }
 }
 
