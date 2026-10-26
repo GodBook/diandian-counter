@@ -91,4 +91,6 @@ adb -s emulator-5582 shell am instrument -w cn.diandian.counter.tests/cn.diandia
 
 在线更新设备测试使用 `-PcounterTestBuildType=release` 构建 `:app:assembleReleaseAndroidTest`，在专用模拟器安装同签名的正式版和测试包，执行 `am instrument -w -e mode updates ...`。这会访问真实 GitHub 最新版本、下载附件、校验签名和文件、测试只读安装 URI、错误元数据及检查更新状态。该套测试针对当前正式版发布。开发测试可通过 Gradle 属性 `counterVersionCode`、`counterVersionName` 构建较低版本以验证完整覆盖升级，测试包不作为正式版发布。
 
+`-e mode update-ui` 在较低版本的专用测试包中创建计数 17 的测试数据，走实际检查、下载、系统安装授权及交接安装器的流程。确认系统安装器安装最新版后，`-e mode verify-upgrade` 验证原计数、17 条逐次日志、创建记录和设置仍保留，并检查实际安装的版本码。当前覆盖升级测试目标是 1.1.1（版本码 3）。[最新验证记录](artifacts/VALIDATION-1.1.1.md)。
+
 业务代码在 `app/src/main/java/cn/diandian/counter`：`MainActivity` 为原生界面，`CounterStore` 管理 SQLite 事务和日志，`ResetRule` 计算周期，`ResetScheduler` 与 `ResetReceiver` 安排后台归零、开机恢复和时间变更后的重新调度。`UpdateManager` 管理更新任务与状态，`UpdateHttp` 处理受限 HTTPS 请求，`UpdateFiles` 下载并校验 APK，`UpdateFileProvider` 向系统安装器临时提供只读文件。

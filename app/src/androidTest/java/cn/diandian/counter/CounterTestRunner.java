@@ -21,6 +21,14 @@ public final class CounterTestRunner extends Instrumentation {
     @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); mode = arguments == null ? "data" : arguments.getString("mode", "data"); ui = "ui".equals(mode); start(); }
     @Override public void onStart() {
         Bundle result = new Bundle();
+        if ("update-ui".equals(mode) || "verify-upgrade".equals(mode)) {
+            try {
+                UiScenario scenario = new UiScenario(this);
+                int passed = "update-ui".equals(mode) ? scenario.runUpdate() : scenario.verifyUpgrade();
+                result.putString("stream", "\nPASS: " + passed + " " + mode + " assertions.\n"); finish(Activity.RESULT_OK, result);
+            } catch (Throwable failure) { result.putString("stream", "\nFAIL " + mode + ": " + android.util.Log.getStackTraceString(failure)); finish(1, result); }
+            return;
+        }
         if ("updates".equals(mode)) {
             try {
                 int passed = new UpdateScenario(this).run();

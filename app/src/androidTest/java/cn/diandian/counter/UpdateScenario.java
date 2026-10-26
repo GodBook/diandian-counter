@@ -32,11 +32,17 @@ final class UpdateScenario {
         try { UpdateHttp.text(UpdateManifest.LATEST, 1); } catch (IOException invalid) { rejected = true; }
         check(rejected, "network response size is bounded");
         android.content.pm.PackageManager packages = context.getPackageManager();
-        android.content.pm.PackageInfo installed = packages.getPackageInfo(context.getPackageName(), android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES);
-        android.content.pm.PackageInfo archive = packages.getPackageArchiveInfo(installed.applicationInfo.sourceDir, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES | android.content.pm.PackageManager.GET_SIGNATURES);
-        check(installed.signingInfo != null && archive != null && archive.signingInfo != null, "platform returns installed and archive signing certificates");
-        String installedHash = UpdateFiles.hex(java.security.MessageDigest.getInstance("SHA-256").digest(installed.signingInfo.getApkContentsSigners()[0].toByteArray()));
-        String archiveHash = UpdateFiles.hex(java.security.MessageDigest.getInstance("SHA-256").digest(archive.signingInfo.getApkContentsSigners()[0].toByteArray()));
+        int flags = android.content.pm.PackageManager.GET_SIGNATURES;
+        if (android.os.Build.VERSION.SDK_INT >= 28) flags |= android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES;
+        android.content.pm.PackageInfo installed = packages.getPackageInfo(context.getPackageName(), flags);
+        android.content.pm.PackageInfo archive = packages.getPackageArchiveInfo(installed.applicationInfo.sourceDir, flags);
+        check(archive != null, "platform parses the installed APK archive");
+        android.content.pm.Signature[] installedSignatures = android.os.Build.VERSION.SDK_INT >= 28
+                ? installed.signingInfo.getApkContentsSigners() : installed.signatures;
+        android.content.pm.Signature[] archiveSignatures = android.os.Build.VERSION.SDK_INT >= 28
+                ? archive.signingInfo.getApkContentsSigners() : archive.signatures;
+        String installedHash = UpdateFiles.hex(java.security.MessageDigest.getInstance("SHA-256").digest(installedSignatures[0].toByteArray()));
+        String archiveHash = UpdateFiles.hex(java.security.MessageDigest.getInstance("SHA-256").digest(archiveSignatures[0].toByteArray()));
         check(installedHash.equals(archiveHash), "installed APK parses with same certificate: " + installedHash + " vs " + archiveHash);
         AtomicInteger progress = new AtomicInteger(-1);
         File apk = UpdateFiles.download(context, release, new AtomicBoolean(), percent -> {

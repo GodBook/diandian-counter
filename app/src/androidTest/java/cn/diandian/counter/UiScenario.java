@@ -47,6 +47,48 @@ final class UiScenario {
         return checks;
     }
 
+    int runUpdate() throws Exception {
+        Context context = instrumentation.getTargetContext();
+        UpdateManifest release = UpdateManifest.parse(UpdateHttp.text(UpdateManifest.LATEST, 65_536));
+        check(release.newerThan(BuildConfig.VERSION_CODE), "upgrade UI test requires a lower installed test version");
+        ((CounterApp) context.getApplicationContext()).updates().automatic(false);
+        Counter seed = new Counter(); seed.name = "在线升级保留验证"; seed = store.save(seed, System.currentTimeMillis());
+        for (int i = 0; i < 17; i++) store.increment(seed.id, System.currentTimeMillis());
+        context.getSharedPreferences("verification", Context.MODE_PRIVATE).edit().putLong("upgrade_seed", seed.id).commit();
+        instrumentation.startActivitySync(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        click("设置与使用说明"); click("检查更新");
+        check(find("发现新版本 " + release.versionName, 30_000) != null, "settings displays the real newer GitHub release");
+        click("下载更新");
+        check(find("更新已下载", 30_000) != null, "in-app download reaches verified ready dialog");
+        click("安装");
+        if (find("允许安装更新", 3000) != null) {
+            click("前往设置");
+            check(find("Allow from this source", 15_000) != null, "opens Android unknown-source settings");
+            click("Allow from this source");
+            instrumentation.getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
+        }
+        long end = SystemClock.uptimeMillis() + 30_000; boolean installer = false;
+        while (SystemClock.uptimeMillis() < end) {
+            AccessibilityNodeInfo root = instrumentation.getUiAutomation().getRootInActiveWindow();
+            if (root != null && root.getPackageName() != null && root.getPackageName().toString().contains("packageinstaller")) { installer = true; break; }
+            SystemClock.sleep(200);
+        }
+        check(installer, "verified APK handed to Android installer with URI permission");
+        return checks;
+    }
+
+    int verifyUpgrade() throws Exception {
+        Context context = instrumentation.getTargetContext();
+        long id = context.getSharedPreferences("verification", Context.MODE_PRIVATE).getLong("upgrade_seed", 0);
+        Counter seed = store.counter(id);
+        check(seed.name.equals("在线升级保留验证") && seed.value == 17, "counter identity, name and value survive installed update");
+        check(store.eventCount(id, 1) == 17, "all individual click audit entries survive update");
+        check(store.events(id, 3, 0, 20).stream().anyMatch(e -> e.action.equals("CREATE")), "original creation audit survives update");
+        check(!((CounterApp) context.getApplicationContext()).updates().automatic(), "settings survive update");
+        check(UpdateFiles.versionCode(context.getPackageManager().getPackageInfo(context.getPackageName(), 0)) == 3, "Android actually installed release version 1.1.1");
+        return checks;
+    }
+
     private AccessibilityNodeInfo find(String expected, long timeout) {
         long end = SystemClock.uptimeMillis() + timeout;
         do {
